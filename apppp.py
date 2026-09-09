@@ -1,531 +1,524 @@
-import pygame
-import sys
-import math
+import streamlit as st
+import streamlit.components.v1 as components
 
-# Pygame 초기화
-pygame.init()
+st.set_page_config(
+    page_title="Neon Bounce",
+    page_icon="🎮",
+    layout="centered"
+)
 
-# 화면 설정
-TILE_SIZE = 40
-COLS = 20
-ROWS = 15
-WIDTH = COLS * TILE_SIZE
-HEIGHT = ROWS * TILE_SIZE
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Neon Bounce")
-clock = pygame.time.Clock()
-
-# 색상 정의 (RGB)
-BG_COLOR = (15, 23, 42)  # slate-900
-GRID_COLOR = (30, 41, 59) # slate-800
-TEXT_COLOR = (248, 250, 252) # slate-50
-
-PLAYER_COLOR = (56, 189, 248) # sky-400
-PLAYER_GLOW = (2, 132, 199) # sky-600
-
-BLOCK_COLOR = (148, 163, 184, 200) # slate-400
-BLOCK_BORDER = (203, 213, 225) # slate-300
-
-SPIKE_COLOR = (239, 68, 68) # red-500
-SPIKE_GLOW = (185, 28, 28) # red-700
-
-GOAL_COLOR = (74, 222, 128) # green-400
-GOAL_GLOW = (22, 163, 74) # green-600
-
-# 블록 타입 상수
-EMPTY = 0
-NORMAL = 1
-SPIKE_UP = 2
-SPIKE_DOWN = 3
-SPIKE_LEFT = 4
-SPIKE_RIGHT = 5
-START = 8
-GOAL = 9
-
-class Player:
-    def __init__(self, x, y):
-        self.start_x = x
-        self.start_y = y
-        self.x = x
-        self.y = y
-        self.radius = TILE_SIZE * 0.35
-        self.vx = 0
-        self.vy = 0
-        self.speed = TILE_SIZE * 0.15
-        self.gravity = TILE_SIZE * 0.02
-        self.bounce_force = -TILE_SIZE * 0.35
-        self.rect = pygame.Rect(self.x - self.radius, self.y - self.radius, self.radius * 2, self.radius * 2)
-
-    def reset(self):
-        self.x = self.start_x
-        self.y = self.start_y
-        self.vx = 0
-        self.vy = 0
-        self.update_rect()
-
-    def update_rect(self):
-        self.rect.x = self.x - self.radius
-        self.rect.y = self.y - self.radius
-
-    def update(self, keys):
-        # 좌우 이동
-        if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-            self.vx = -self.speed
-        elif keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-            self.vx = self.speed
-        else:
-            self.vx = 0
-
-        # 중력 적용
-        self.vy += self.gravity
+html_code = """
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Neon Bounce</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #0f172a;
+            color: #f8fafc;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        canvas {
+            background-color: #1e293b;
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.2);
+            border-radius: 10px;
+            max-width: 100%;
+            max-height: 80vh;
+            image-rendering: pixelated;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            padding: 20px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
+        }
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+            z-index: 10;
+        }
+        .overlay-title {
+            font-size: 3.5rem;
+            font-weight: 900;
+            margin-bottom: 1.5rem;
+            color: #38bdf8;
+            text-shadow: 0 0 20px #38bdf8, 0 0 40px #0284c7;
+            text-align: center;
+        }
+        .btn {
+            background: linear-gradient(135deg, #0ea5e9, #2563eb);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
+            transition: transform 0.1s, box-shadow 0.1s;
+            margin: 10px;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(37, 99, 235, 0.6);
+        }
+        .hidden {
+            display: none !important;
+        }
+        #mobile-controls {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 600px;
+            padding: 20px;
+            pointer-events: auto;
+            margin-top: auto;
+        }
+        .control-btn {
+            width: 70px;
+            height: 70px;
+            background: rgba(56, 189, 248, 0.2);
+            border: 2px solid rgba(56, 189, 248, 0.5);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            color: rgba(255, 255, 255, 0.7);
+            user-select: none;
+        }
+        @media (min-width: 768px) {
+            #mobile-controls {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
         
-        # 최고 낙하 속도 제한
-        if self.vy > TILE_SIZE * 0.4:
-            self.vy = TILE_SIZE * 0.4
-
-        self.x += self.vx
-        self.y += self.vy
-        self.update_rect()
-
-    def draw(self, surface):
-        # 네온 효과 (바깥쪽 흐릿한 원)
-        pygame.draw.circle(surface, PLAYER_GLOW, (int(self.x), int(self.y)), int(self.radius * 1.3))
-        # 본체
-        pygame.draw.circle(surface, PLAYER_COLOR, (int(self.x), int(self.y)), int(self.radius))
-        # 하이라이트
-        pygame.draw.circle(surface, (255, 255, 255, 128), (int(self.x - self.radius * 0.3), int(self.y - self.radius * 0.3)), int(self.radius * 0.2))
-
-class Block:
-    def __init__(self, x, y, b_type):
-        self.x = x * TILE_SIZE
-        self.y = y * TILE_SIZE
-        self.width = TILE_SIZE
-        self.height = TILE_SIZE
-        self.type = b_type
-        self.rect = pygame.Rect(self.x, self.y, self.width, self.height)
-
-    def draw(self, surface, time):
-        if self.type == NORMAL:
-            # 블록 본체
-            pygame.draw.rect(surface, (100, 116, 139), self.rect)
-            # 네온 엣지 효과
-            pygame.draw.rect(surface, BLOCK_BORDER, self.rect, 2)
-            inner_rect = pygame.Rect(self.x + 2, self.y + 2, self.width - 4, self.height - 4)
-            pygame.draw.rect(surface, (148, 163, 184), inner_rect, 1)
-
-        elif self.type in (SPIKE_UP, SPIKE_DOWN, SPIKE_LEFT, SPIKE_RIGHT):
-            self.draw_spike(surface)
-
-        elif self.type == GOAL:
-            cx = self.x + self.width / 2
-            cy = self.y + self.height / 2
-            r = self.width * 0.4
+        <div id="ui-layer">
+            <div class="header">
+                <span id="stage-display">Stage 1</span>
+                <span id="deaths-display">Deaths: 0</span>
+            </div>
             
-            # 네온 글로우
-            pygame.draw.circle(surface, GOAL_GLOW, (int(cx), int(cy)), int(r * 1.2))
-            
-            # 본체
-            pygame.draw.circle(surface, GOAL_COLOR, (int(cx), int(cy)), int(r))
-            pygame.draw.circle(surface, (255, 255, 255), (int(cx), int(cy)), int(r), 2)
-            
-            # 펄스 애니메이션
-            pulse_r = r * 0.5 + math.sin(time * 0.005) * r * 0.2
-            pygame.draw.circle(surface, (255, 255, 255), (int(cx), int(cy)), int(pulse_r))
+            <div id="mobile-controls">
+                <div class="control-btn" id="btn-left">◀</div>
+                <div class="control-btn" id="btn-right">▶</div>
+            </div>
+        </div>
 
-    def draw_spike(self, surface):
-        x, y, w, h = self.x, self.y, self.width, self.height
-        points = []
-        if self.type == SPIKE_UP:
-            points = [(x, y + h), (x + w / 2, y), (x + w, y + h)]
-        elif self.type == SPIKE_DOWN:
-            points = [(x, y), (x + w / 2, y + h), (x + w, y)]
-        elif self.type == SPIKE_LEFT:
-            points = [(x + w, y), (x, y + h / 2), (x + w, y + h)]
-        elif self.type == SPIKE_RIGHT:
-            points = [(x, y), (x + w, y + h / 2), (x, y + h)]
+        <div id="main-menu" class="overlay">
+            <div class="overlay-title">NEON<br>BOUNCE</div>
+            <button class="btn" id="start-btn">Game Start</button>
+            <p class="mt-4 text-slate-400">방향키(←, →) 또는 A/D 키로 이동하세요</p>
+        </div>
 
-        # 글로우 효과
-        glow_points = points.copy() # 단순화를 위해 같은 크기로 그림 (실제로는 약간 더 커야 함)
-        pygame.draw.polygon(surface, SPIKE_GLOW, glow_points)
-        pygame.draw.polygon(surface, SPIKE_COLOR, points)
+        <div id="game-over" class="overlay hidden">
+            <div class="overlay-title" style="color: #ef4444; text-shadow: 0 0 20px #ef4444;">GAME OVER</div>
+            <button class="btn" id="retry-btn">Retry Stage</button>
+            <p class="mt-4 text-slate-400">Press SPACE or Click Retry</p>
+        </div>
 
-stages = [
-    # Stage 1: Basic Jump
-    [
-        "00000000000000000000",
-        "00000000000000000000",
-        "00000000000000000000",
-        "00000000000000000000",
-        "00000000000000000000",
-        "00000000000000000000",
-        "00000000000000000000",
-        "00000000000000000000",
-        "00000000000000000000",
-        "00800000000000000090",
-        "00000000000000000000",
-        "11100111001110011111",
-        "00000000000000000000",
-        "00000000000000000000",
-        "00000000000000000000"
-    ],
-    # Stage 2: Spikes introduction
-    [
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00800000000000000090",
-                "00000000000000000000",
-                "11110001111000111111",
-                "11112221111222111111",
-                "11111111111111111111",
-                "00000000000000000000"
-    ],
-    # Stage 3: Height change
-    [
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000090",
-                "00000000000000001111",
-                "00000000000000000000",
-                "00000000000011110000",
-                "00000000000000000000",
-                "00000000111100000000",
-                "00000000000000000000",
-                "00001111000000000000",
-                "00800000000000000000",
-                "11110000000000000000",
-                "00000000000000000000",
-                "00000000000000000000"
-    ],
-    # Stage 4: Spike Tunnel
-    [
-                "11111111111111111111",
-                "11111111111111111111",
-                "33333333333333333333",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00800000000000000090",
-                "00000012210002200000",
-                "11111211111211111111",
-                "11111111111111111111",
-                "11111111111111111111",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000"
-    ],
-    # Stage 5: ZigZag
-    [
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000090",
-                "00800000000000000111",
-                "00000000000000000000",
-                "01100011000110001100",
-                "01100011000110001100",
-                "01100011000110001100",
-                "00000000000000000000"
-    ],
-    # Stage 6: Precision Jumps
-    [
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000090",
-                "00000000011100001111",
-                "00001100001100000000",
-                "00000000001100000000",
-                "00800001101100000000",
-                "00000000001100000000",
-                "11111100001111111111",
-                "11111122221111111111",
-                "11111111111111111111",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000"
-    ],
-    # Stage 7: Wall of Spikes
-    [
-                "00000000000000000000",
-                "11111111111111111111",
-                "11111111111111111111",
-                "33333333333333333333",
-                "00000333000333000000",
-                "00000030000030000000",
-                "00800000000000000090",
-                "00000000000000000000",
-                "11111111111111111111",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000",
-                "00000000000000000000"
-    ],
-     # Stage 8: Stairs
-    [
-                "00800000000000000000",
-                "11100000000000000000",
-                "00000000000000000000",
-                "00000400000000000000",
-                "00000110000000000000",
-                "00000000040000000000",
-                "00000000011000000000",
-                "00000000000004000000",
-                "00000000000001100000",
-                "00000000000000000000",
-                "00000000000000000090",
-                "00000000000000000111",
-                "22222222222222222111",
-                "11111111111111111111",
-                "00000000000000000000"
-    ],
-    # Stage 9: Tight Squeeze
-    [
-                "00000000000000000000",
-                "11111111111111110090",
-                "00000000000000000111",
-                "00000000000000000000",
-                "00111111111111111111",
-                "10000000000000000000",
-                "00000000000000000000",
-                "11111111111111111000",
-                "00000000000000000100",
-                "00000000000000000000",
-                "00011111111111111111",
-                "00800000000000000000",
-                "11110000000000000000",
-                "22222222222222222222",
-                "11111111111111111111"
-    ],
-    # Stage 10: The Finale
-    [
-                "00000000000000000000",
-                "00000000000000000090",
-                "00000000000000000111",
-                "00000000000002200000",
-                "00000000000011110000",
-                "00000000020000000000",
-                "00000000110000000000",
-                "00000200000000000000",
-                "00001100000000000000",
-                "00800000000000000000",
-                "11110000000000000000",
-                "22222222222222222222",
-                "11111111111111111111",
-                "00000000000000000000",
-                "00000000000000000000"
-    ]
-]
-
-def rect_circle_colliding(circle_x, circle_y, radius, rect):
-    # 가장 가까운 점 찾기
-    closest_x = max(rect.left, min(circle_x, rect.right))
-    closest_y = max(rect.top, min(circle_y, rect.bottom))
-
-    # 거리 계산
-    distance_x = circle_x - closest_x
-    distance_y = circle_y - closest_y
-
-    # 피타고라스 정리로 반지름 이내인지 확인
-    return (distance_x ** 2 + distance_y ** 2) < (radius ** 2)
-
-class Game:
-    def __init__(self):
-        self.state = 'menu' # menu, playing, gameover, clear, allclear
-        self.current_stage = 0
-        self.deaths = 0
-        self.player = None
-        self.blocks = []
+        <div id="stage-clear" class="overlay hidden">
+            <div class="overlay-title" style="color: #4ade80; text-shadow: 0 0 20px #4ade80;">STAGE CLEAR!</div>
+            <button class="btn" id="next-btn">Next Stage</button>
+            <p class="mt-4 text-slate-400">Press SPACE or Click Next</p>
+        </div>
         
-        # 폰트 설정 (기본 폰트 사용)
-        self.font_large = pygame.font.SysFont('arial', 64, bold=True)
-        self.font_medium = pygame.font.SysFont('arial', 32, bold=True)
-        self.font_small = pygame.font.SysFont('arial', 24)
+        <div id="all-clear" class="overlay hidden">
+            <div class="overlay-title" style="color: #facc15; text-shadow: 0 0 20px #facc15;">ALL CLEAR!</div>
+            <p id="final-stats" class="mb-6 text-2xl font-bold">Total Deaths: 0</p>
+            <button class="btn" id="home-btn">Main Menu</button>
+        </div>
+    </div>
 
-    def load_stage(self, stage_index):
-        self.blocks = []
-        layout = stages[stage_index]
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const uiStage = document.getElementById('stage-display');
+        const uiDeaths = document.getElementById('deaths-display');
+        const mainMenu = document.getElementById('main-menu');
+        const gameOverScreen = document.getElementById('game-over');
+        const stageClearScreen = document.getElementById('stage-clear');
+        const allClearScreen = document.getElementById('all-clear');
+        const finalStats = document.getElementById('final-stats');
+
+        const TILE_SIZE = 40; 
+        const COLS = 20;
+        const ROWS = 15;
+        const GAME_WIDTH = COLS * TILE_SIZE; 
+        const GAME_HEIGHT = ROWS * TILE_SIZE; 
         
-        for y, row in enumerate(layout):
-            for x, char in enumerate(row):
-                b_type = int(char)
-                if b_type == START:
-                    self.player = Player(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2)
-                elif b_type != EMPTY:
-                    self.blocks.append(Block(x, y, b_type))
+        let scale = 1;
 
-    def draw_text(self, text, font, color, y, shadow_color=None):
-        text_surface = font.render(text, True, color)
-        text_rect = text_surface.get_rect(center=(WIDTH/2, y))
+        const COLORS = {
+            BG: '#0f172a',
+            GRID: '#1e293b',
+            PLAYER: '#38bdf8',
+            PLAYER_GLOW: '#0284c7',
+            BLOCK_BORDER: '#cbd5e1',
+            SPIKE: '#ef4444',
+            SPIKE_GLOW: '#b91c1c',
+            GOAL: '#4ade80',
+            GOAL_GLOW: '#16a34a'
+        };
+
+        let gameState = 'menu';
+        let currentStage = 0;
+        let deaths = 0;
+        let animationId;
         
-        if shadow_color:
-            shadow_surface = font.render(text, True, shadow_color)
-            shadow_rect = shadow_surface.get_rect(center=(WIDTH/2, y))
-            # 네온 그림자 효과 (여러 번 그려서 흐리게)
-            for offset in [(-2, -2), (2, -2), (-2, 2), (2, 2)]:
-                screen.blit(shadow_surface, shadow_rect.move(offset))
-                
-        screen.blit(text_surface, text_rect)
+        const keys = { ArrowLeft: false, ArrowRight: false, a: false, d: false };
+        let touchLeft = false;
+        let touchRight = false;
 
-    def draw_ui(self):
-        if self.state == 'playing':
-            stage_text = self.font_small.render(f"Stage {self.current_stage + 1}", True, TEXT_COLOR)
-            death_text = self.font_small.render(f"Deaths: {self.deaths}", True, TEXT_COLOR)
-            screen.blit(stage_text, (20, 20))
-            screen.blit(death_text, (WIDTH - 120, 20))
+        class Player {
+            constructor(x, y) {
+                this.startX = x;
+                this.startY = y;
+                this.x = x;
+                this.y = y;
+                this.radius = TILE_SIZE * 0.35;
+                this.vx = 0;
+                this.vy = 0;
+                this.speed = TILE_SIZE * 0.15;
+                this.gravity = TILE_SIZE * 0.02;
+                this.bounceForce = -TILE_SIZE * 0.35;
+            }
 
-        elif self.state == 'menu':
-            # 반투명 오버레이
-            overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-            overlay.fill((15, 23, 42, 200))
-            screen.blit(overlay, (0, 0))
+            reset() {
+                this.x = this.startX;
+                this.y = this.startY;
+                this.vx = 0;
+                this.vy = 0;
+            }
+
+            update() {
+                let isMovingLeft = keys.ArrowLeft || keys.a || touchLeft;
+                let isMovingRight = keys.ArrowRight || keys.d || touchRight;
+
+                if (isMovingLeft) this.vx = -this.speed;
+                else if (isMovingRight) this.vx = this.speed;
+                else this.vx = 0;
+
+                this.vy += this.gravity;
+                if (this.vy > TILE_SIZE * 0.4) this.vy = TILE_SIZE * 0.4;
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                if (this.y - this.radius > GAME_HEIGHT) die();
+            }
+
+            draw(ctx) {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 1.3, 0, Math.PI * 2);
+                ctx.fillStyle = COLORS.PLAYER_GLOW;
+                ctx.globalAlpha = 0.5;
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = COLORS.PLAYER;
+                ctx.fill();
+            }
+        }
+
+        const BLOCK_TYPES = {
+            EMPTY: 0, NORMAL: 1, SPIKE_UP: 2, SPIKE_DOWN: 3, SPIKE_LEFT: 4, SPIKE_RIGHT: 5, PLAYER_START: 8, GOAL: 9
+        };
+
+        class Block {
+            constructor(x, y, type) {
+                this.x = x * TILE_SIZE;
+                this.y = y * TILE_SIZE;
+                this.width = TILE_SIZE;
+                this.height = TILE_SIZE;
+                this.type = type;
+            }
+
+            draw(ctx, time) {
+                if (this.type === BLOCK_TYPES.NORMAL) {
+                    ctx.fillStyle = '#64748b';
+                    ctx.fillRect(this.x, this.y, this.width, this.height);
+                    ctx.strokeStyle = COLORS.BLOCK_BORDER;
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(this.x, this.y, this.width, this.height);
+                } else if (this.type >= 2 && this.type <= 5) {
+                    this.drawSpike(ctx);
+                } else if (this.type === BLOCK_TYPES.GOAL) {
+                    let cx = this.x + this.width / 2;
+                    let cy = this.y + this.height / 2;
+                    let r = this.width * 0.4;
+                    
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r * 1.2, 0, Math.PI * 2);
+                    ctx.fillStyle = COLORS.GOAL_GLOW;
+                    ctx.fill();
+                    
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                    ctx.fillStyle = COLORS.GOAL;
+                    ctx.fill();
+                }
+            }
+
+            drawSpike(ctx) {
+                let x = this.x, y = this.y, w = this.width, h = this.height;
+                ctx.beginPath();
+                if (this.type === BLOCK_TYPES.SPIKE_UP) {
+                    ctx.moveTo(x, y + h); ctx.lineTo(x + w / 2, y); ctx.lineTo(x + w, y + h);
+                } else if (this.type === BLOCK_TYPES.SPIKE_DOWN) {
+                    ctx.moveTo(x, y); ctx.lineTo(x + w / 2, y + h); ctx.lineTo(x + w, y);
+                } else if (this.type === BLOCK_TYPES.SPIKE_LEFT) {
+                    ctx.moveTo(x + w, y); ctx.lineTo(x, y + h / 2); ctx.lineTo(x + w, y + h);
+                } else if (this.type === BLOCK_TYPES.SPIKE_RIGHT) {
+                    ctx.moveTo(x, y); ctx.lineTo(x + w, y + h / 2); ctx.lineTo(x, y + h);
+                }
+                ctx.closePath();
+                ctx.fillStyle = COLORS.SPIKE;
+                ctx.fill();
+            }
+        }
+
+        function rectCircleColliding(circle, rect) {
+            let closestX = Math.max(rect.x, Math.min(circle.x, rect.x + rect.width));
+            let closestY = Math.max(rect.y, Math.min(circle.y, rect.y + rect.height));
+            let distanceX = circle.x - closestX;
+            let distanceY = circle.y - closestY;
+            return (distanceX * distanceX + distanceY * distanceY) < (circle.radius * circle.radius);
+        }
+
+        const stages = [
+            // Stage 1
+            ["00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00800000000000000090","00000000000000000000","11100111001110011111","00000000000000000000","00000000000000000000","00000000000000000000"],
+            // Stage 2
+            ["00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00800000000000000090","00000000000000000000","11110001111000111111","11112221111222111111","11111111111111111111","00000000000000000000"],
+            // Stage 3
+            ["00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000090","00000000000000001111","00000000000000000000","00000000000011110000","00000000000000000000","00000000111100000000","00000000000000000000","00001111000000000000","00800000000000000000","11110000000000000000","00000000000000000000","00000000000000000000"],
+            // Stage 4
+            ["11111111111111111111","11111111111111111111","33333333333333333333","00000000000000000000","00000000000000000000","00000000000000000000","00800000000000000090","00000012210002200000","11111211111211111111","11111111111111111111","11111111111111111111","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000"],
+            // Stage 5
+            ["00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000090","00800000000000000111","00000000000000000000","01100011000110001100","01100011000110001100","01100011000110001100","00000000000000000000"],
+            // Stage 6
+            ["00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000090","00000000011100001111","00001100001100000000","00000000001100000000","00800001101100000000","00000000001100000000","11111100001111111111","11111122221111111111","11111111111111111111","00000000000000000000","00000000000000000000","00000000000000000000"],
+            // Stage 7
+            ["00000000000000000000","11111111111111111111","11111111111111111111","33333333333333000000","00000000000000000000","00000000000000000000","00800000000000000090","00000000000000000000","11111111111111111111","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000"],
+            // Stage 8
+            ["00800000000000000000","11100000000000000000","00000000000000000000","00000400000000000000","00000110000000000000","00000000040000000000","00000000011000000000","00000000000004000000","00000000000001100000","00000000000000000000","00000000000000000090","00000000000000000111","22222222222222222111","11111111111111111111","00000000000000000000"],
+            // Stage 9
+            ["00000000000000000000","11111111111111110090","00000000000000000111","00000000000000000000","01111111111111111111","00000000000000000000","00000000000000000000","11111111111111111000","00000000000000000000","00000000000000000000","00011111111111111111","00800000000000000000","11110000000000000000","22222222222222222222","11111111111111111111"],
+            // Stage 10
+            ["00000000000000000000","00000000000000000090","00000000000000000111","00000000000002200000","00000000000011110000","00000000000000000000","00000000110000000000","00000000000000000000","00001100000000000000","00800000000000000000","11110000000000000000","22222222222222222222","11111111111111111111","00000000000000000000","00000000000000000000"]
+        ];
+
+        let player;
+        let blocks = [];
+
+        function resize() {
+            scale = Math.min(window.innerWidth / GAME_WIDTH, window.innerHeight / GAME_HEIGHT) * 0.95;
+            canvas.width = GAME_WIDTH * scale;
+            canvas.height = GAME_HEIGHT * scale;
+            ctx.scale(scale, scale);
+        }
+
+        function loadStage(stageIndex) {
+            blocks = [];
+            player = null;
+            const layout = stages[stageIndex];
             
-            self.draw_text("NEON BOUNCE", self.font_large, PLAYER_COLOR, HEIGHT / 2 - 50, PLAYER_GLOW)
-            self.draw_text("Press SPACE to Start", self.font_medium, TEXT_COLOR, HEIGHT / 2 + 50)
+            for (let y = 0; y < layout.length; y++) {
+                for (let x = 0; x < layout[y].length; x++) {
+                    const type = parseInt(layout[y][x]);
+                    if (type === BLOCK_TYPES.PLAYER_START) {
+                        player = new Player(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2);
+                    } else if (type !== BLOCK_TYPES.EMPTY) {
+                        blocks.push(new Block(x, y, type));
+                    }
+                }
+            }
+            uiStage.innerText = `Stage ${stageIndex + 1}`;
+            uiDeaths.innerText = `Deaths: ${deaths}`;
+        }
 
-        elif self.state == 'gameover':
-            overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-            overlay.fill((15, 23, 42, 200))
-            screen.blit(overlay, (0, 0))
+        function gameLoop(timestamp) {
+            if (gameState !== 'playing') return;
             
-            self.draw_text("GAME OVER", self.font_large, SPIKE_COLOR, HEIGHT / 2 - 50, SPIKE_GLOW)
-            self.draw_text("Press SPACE to Retry", self.font_medium, TEXT_COLOR, HEIGHT / 2 + 50)
+            player.update();
+            let prevY = player.y - player.vy;
+            let prevX = player.x - player.vx;
 
-        elif self.state == 'clear':
-            overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-            overlay.fill((15, 23, 42, 200))
-            screen.blit(overlay, (0, 0))
+            for (let block of blocks) {
+                if (rectCircleColliding(player, block)) {
+                    if (block.type === BLOCK_TYPES.GOAL) {
+                        clearStage();
+                        return;
+                    }
+                    if (block.type >= 2 && block.type <= 5) {
+                        die();
+                        return;
+                    }
+                    if (block.type === BLOCK_TYPES.NORMAL) {
+                        if (prevY + player.radius <= block.y + 5) {
+                            player.y = block.y - player.radius;
+                            player.vy = player.bounceForce;
+                        } else if (prevY - player.radius >= block.y + block.height - 5) {
+                            player.y = block.y + block.height + player.radius;
+                            player.vy = 0;
+                        } else {
+                            if (prevX < block.x) player.x = block.x - player.radius;
+                            else if (prevX > block.x + block.width) player.x = block.x + block.width + player.radius;
+                        }
+                    }
+                }
+            }
+
+            ctx.fillStyle = COLORS.BG;
+            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
             
-            self.draw_text("STAGE CLEAR!", self.font_large, GOAL_COLOR, HEIGHT / 2 - 50, GOAL_GLOW)
-            self.draw_text("Press SPACE to Next Stage", self.font_medium, TEXT_COLOR, HEIGHT / 2 + 50)
+            ctx.strokeStyle = COLORS.GRID;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for (let x = 0; x <= GAME_WIDTH; x += TILE_SIZE) {
+                ctx.moveTo(x, 0); ctx.lineTo(x, GAME_HEIGHT);
+            }
+            for (let y = 0; y <= GAME_HEIGHT; y += TILE_SIZE) {
+                ctx.moveTo(0, y); ctx.lineTo(GAME_WIDTH, y);
+            }
+            ctx.stroke();
 
-        elif self.state == 'allclear':
-            overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-            overlay.fill((15, 23, 42, 200))
-            screen.blit(overlay, (0, 0))
-            
-            self.draw_text("ALL CLEAR!", self.font_large, (250, 204, 21), (202, 138, 4), HEIGHT / 2 - 80)
-            self.draw_text(f"Total Deaths: {self.deaths}", self.font_medium, TEXT_COLOR, HEIGHT / 2)
-            self.draw_text("Press SPACE to Main Menu", self.font_medium, TEXT_COLOR, HEIGHT / 2 + 80)
+            for (let block of blocks) block.draw(ctx, timestamp);
+            player.draw(ctx);
 
-def main():
-    game = Game()
-    running = True
+            animationId = requestAnimationFrame(gameLoop);
+        }
 
-    while running:
-        time = pygame.time.get_ticks()
+        function startGame() {
+            gameState = 'playing';
+            currentStage = 0;
+            deaths = 0;
+            hideAllMenus();
+            loadStage(currentStage);
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function die() {
+            gameState = 'gameover';
+            deaths++;
+            uiDeaths.innerText = `Deaths: ${deaths}`;
+            gameOverScreen.classList.remove('hidden');
+            cancelAnimationFrame(animationId);
+        }
+
+        function retryStage() {
+            gameState = 'playing';
+            hideAllMenus();
+            player.reset();
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function clearStage() {
+            gameState = 'clear';
+            cancelAnimationFrame(animationId);
+            if (currentStage < stages.length - 1) {
+                stageClearScreen.classList.remove('hidden');
+            } else {
+                gameState = 'allclear';
+                finalStats.innerText = `Total Deaths: ${deaths}`;
+                allClearScreen.classList.remove('hidden');
+            }
+        }
+
+        function nextStage() {
+            currentStage++;
+            gameState = 'playing';
+            hideAllMenus();
+            loadStage(currentStage);
+            animationId = requestAnimationFrame(gameLoop);
+        }
         
-        # 이벤트 처리
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-            
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE:
-                    if game.state == 'menu':
-                        game.state = 'playing'
-                        game.current_stage = 0
-                        game.deaths = 0
-                        game.load_stage(game.current_stage)
-                    elif game.state == 'gameover':
-                        game.state = 'playing'
-                        game.player.reset()
-                    elif game.state == 'clear':
-                        game.current_stage += 1
-                        game.state = 'playing'
-                        game.load_stage(game.current_stage)
-                    elif game.state == 'allclear':
-                        game.state = 'menu'
+        function hideAllMenus() {
+            mainMenu.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            stageClearScreen.classList.add('hidden');
+            allClearScreen.classList.add('hidden');
+        }
 
-        keys = pygame.key.get_pressed()
+        window.addEventListener('keydown', (e) => {
+            if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (gameState === 'menu') startGame();
+                else if (gameState === 'gameover') retryStage();
+                else if (gameState === 'clear') nextStage();
+                else if (gameState === 'allclear') {
+                    hideAllMenus();
+                    mainMenu.classList.remove('hidden');
+                    gameState = 'menu';
+                }
+            }
+        });
 
-        # 업데이트 로직
-        if game.state == 'playing':
-            game.player.update(keys)
+        window.addEventListener('keyup', (e) => {
+            if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
+        });
 
-            # 화면 밖으로 떨어지면 사망
-            if game.player.y - game.player.radius > HEIGHT:
-                game.state = 'gameover'
-                game.deaths += 1
+        document.getElementById('start-btn').addEventListener('click', startGame);
+        document.getElementById('retry-btn').addEventListener('click', retryStage);
+        document.getElementById('next-btn').addEventListener('click', nextStage);
+        document.getElementById('home-btn').addEventListener('click', () => {
+            hideAllMenus();
+            mainMenu.classList.remove('hidden');
+            gameState = 'menu';
+        });
 
-            # 충돌 처리
-            if game.state == 'playing':
-                prev_y = game.player.y - game.player.vy
-                prev_x = game.player.x - game.player.vx
+        resize();
+    </script>
+</body>
+</html>
+"""
 
-                for block in game.blocks:
-                    if rect_circle_colliding(game.player.x, game.player.y, game.player.radius, block.rect):
-                        
-                        # 목표 도착
-                        if block.type == GOAL:
-                            if game.current_stage < len(stages) - 1:
-                                game.state = 'clear'
-                            else:
-                                game.state = 'allclear'
-                            break
-                        
-                        # 가시 충돌
-                        if block.type in (SPIKE_UP, SPIKE_DOWN, SPIKE_LEFT, SPIKE_RIGHT):
-                            game.state = 'gameover'
-                            game.deaths += 1
-                            break
-
-                        # 일반 블록 바운스
-                        if block.type == NORMAL:
-                            # 위에서 충돌
-                            if prev_y + game.player.radius <= block.rect.top + 5:
-                                game.player.y = block.rect.top - game.player.radius
-                                game.player.vy = game.player.bounce_force
-                            # 아래에서 충돌
-                            elif prev_y - game.player.radius >= block.rect.bottom - 5:
-                                game.player.y = block.rect.bottom + game.player.radius
-                                game.player.vy = 0
-                            # 측면 충돌
-                            else:
-                                if prev_x < block.rect.left:
-                                    game.player.x = block.rect.left - game.player.radius
-                                elif prev_x > block.rect.right:
-                                    game.player.x = block.rect.right + game.player.radius
-                            
-                            game.player.update_rect()
-
-        # 그리기
-        screen.fill(BG_COLOR)
-        
-        # 격자 배경 (선택적)
-        for x in range(0, WIDTH, TILE_SIZE):
-            pygame.draw.line(screen, GRID_COLOR, (x, 0), (x, HEIGHT))
-        for y in range(0, HEIGHT, TILE_SIZE):
-            pygame.draw.line(screen, GRID_COLOR, (0, y), (WIDTH, y))
-
-        if game.state != 'menu':
-            for block in game.blocks:
-                block.draw(screen, time)
-            if game.player:
-                game.player.draw(screen)
-
-        game.draw_ui()
-
-        pygame.display.flip()
-        clock.tick(60) # 60 FPS
-
-    pygame.quit()
-    sys.exit()
-
-if __name__ == "__main__":
-    main()
+st.title("⚡ Neon Bounce")
+components.html(html_code, height=680, scrolling=False)
