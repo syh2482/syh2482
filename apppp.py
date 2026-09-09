@@ -57,7 +57,7 @@ html_code = """
             display: flex;
             justify-content: space-between;
             padding: 20px;
-            font-size: 1.5rem;
+            font-size: 1.4rem;
             font-weight: bold;
             text-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
         }
@@ -105,24 +105,35 @@ html_code = """
         #mobile-controls {
             display: flex;
             justify-content: space-between;
+            align-items: center;
             width: 100%;
             max-width: 600px;
             padding: 20px;
             pointer-events: auto;
             margin-top: auto;
         }
+        .control-group {
+            display: flex;
+            gap: 15px;
+        }
         .control-btn {
-            width: 70px;
-            height: 70px;
+            width: 65px;
+            height: 65px;
             background: rgba(56, 189, 248, 0.2);
             border: 2px solid rgba(56, 189, 248, 0.5);
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.8rem;
-            color: rgba(255, 255, 255, 0.7);
+            font-size: 1.6rem;
+            color: rgba(255, 255, 255, 0.8);
             user-select: none;
+            touch-action: manipulation;
+        }
+        .dash-btn {
+            background: rgba(236, 72, 153, 0.25);
+            border-color: rgba(236, 72, 153, 0.6);
+            color: #f472b6;
         }
         @media (min-width: 768px) {
             #mobile-controls {
@@ -138,19 +149,23 @@ html_code = """
         <div id="ui-layer">
             <div class="header">
                 <span id="stage-display">Stage 1</span>
+                <span id="dash-status" style="color: #f472b6;">Dash: READY</span>
                 <span id="deaths-display">Deaths: 0</span>
             </div>
             
             <div id="mobile-controls">
-                <div class="control-btn" id="btn-left">◀</div>
-                <div class="control-btn" id="btn-right">▶</div>
+                <div class="control-group">
+                    <div class="control-btn" id="btn-left">◀</div>
+                    <div class="control-btn" id="btn-right">▶</div>
+                </div>
+                <div class="control-btn dash-btn" id="btn-dash">⚡</div>
             </div>
         </div>
 
         <div id="main-menu" class="overlay">
             <div class="overlay-title">NEON<br>BOUNCE</div>
             <button class="btn" id="start-btn">Game Start</button>
-            <p class="mt-4 text-slate-400">방향키(←, →) 또는 A/D 키로 이동하세요</p>
+            <p class="mt-4 text-slate-400">이동: ←, → (A/D) | 대쉬: Shift / X 키</p>
         </div>
 
         <div id="game-over" class="overlay hidden">
@@ -178,6 +193,7 @@ html_code = """
 
         const uiStage = document.getElementById('stage-display');
         const uiDeaths = document.getElementById('deaths-display');
+        const uiDash = document.getElementById('dash-status');
         const mainMenu = document.getElementById('main-menu');
         const gameOverScreen = document.getElementById('game-over');
         const stageClearScreen = document.getElementById('stage-clear');
@@ -197,9 +213,11 @@ html_code = """
             GRID: '#1e293b',
             PLAYER: '#38bdf8',
             PLAYER_GLOW: '#0284c7',
+            DASH_GLOW: '#ec4899',
             BLOCK_BORDER: '#cbd5e1',
+            MOVING_BLOCK: '#a855f7',
+            MOVING_BORDER: '#c084fc',
             SPIKE: '#ef4444',
-            SPIKE_GLOW: '#b91c1c',
             GOAL: '#4ade80',
             GOAL_GLOW: '#16a34a'
         };
@@ -209,7 +227,7 @@ html_code = """
         let deaths = 0;
         let animationId;
         
-        const keys = { ArrowLeft: false, ArrowRight: false, a: false, d: false };
+        const keys = { ArrowLeft: false, ArrowRight: false, a: false, d: false, Shift: false, x: false };
         let touchLeft = false;
         let touchRight = false;
 
@@ -225,6 +243,15 @@ html_code = """
                 this.speed = TILE_SIZE * 0.15;
                 this.gravity = TILE_SIZE * 0.02;
                 this.bounceForce = -TILE_SIZE * 0.35;
+                
+                // 잔상 효과 (Trail)
+                this.trail = [];
+                
+                // 대쉬 시스템
+                this.dashCooldown = 0; // 쿨다운 프레임
+                this.dashTimer = 0;    // 대쉬 지속 프레임
+                this.isDashing = false;
+                this.facingDir = 1;
             }
 
             reset() {
@@ -232,58 +259,150 @@ html_code = """
                 this.y = this.startY;
                 this.vx = 0;
                 this.vy = 0;
+                this.trail = [];
+                this.dashCooldown = 0;
+                this.dashTimer = 0;
+                this.isDashing = false;
+            }
+
+            triggerDash() {
+                if (this.dashCooldown <= 0 && !this.isDashing) {
+                    this.isDashing = true;
+                    this.dashTimer = 10; // 10프레임 동안 대쉬
+                    this.dashCooldown = 60; // 60프레임(1초) 쿨다운
+                }
             }
 
             update() {
                 let isMovingLeft = keys.ArrowLeft || keys.a || touchLeft;
                 let isMovingRight = keys.ArrowRight || keys.d || touchRight;
 
-                if (isMovingLeft) this.vx = -this.speed;
-                else if (isMovingRight) this.vx = this.speed;
-                else this.vx = 0;
+                if (isMovingLeft) {
+                    this.vx = -this.speed;
+                    this.facingDir = -1;
+                } else if (isMovingRight) {
+                    this.vx = this.speed;
+                    this.facingDir = 1;
+                } else {
+                    this.vx = 0;
+                }
 
-                this.vy += this.gravity;
-                if (this.vy > TILE_SIZE * 0.4) this.vy = TILE_SIZE * 0.4;
+                if (keys.Shift || keys.x) {
+                    this.triggerDash();
+                }
+
+                // 대쉬 처리
+                if (this.isDashing) {
+                    this.vx = this.facingDir * (this.speed * 3.2);
+                    this.vy = 0; // 대쉬 중 중력 무시
+                    this.dashTimer--;
+                    if (this.dashTimer <= 0) {
+                        this.isDashing = false;
+                    }
+                } else {
+                    this.vy += this.gravity;
+                    if (this.vy > TILE_SIZE * 0.4) this.vy = TILE_SIZE * 0.4;
+                }
+
+                if (this.dashCooldown > 0) this.dashCooldown--;
 
                 this.x += this.vx;
                 this.y += this.vy;
+
+                // 잔상 위치 기록 (최대 8개)
+                this.trail.push({ x: this.x, y: this.y, isDash: this.isDashing });
+                if (this.trail.length > 8) {
+                    this.trail.shift();
+                }
 
                 if (this.y - this.radius > GAME_HEIGHT) die();
             }
 
             draw(ctx) {
+                // 잔상 그리기
+                for (let i = 0; i < this.trail.length; i++) {
+                    let point = this.trail[i];
+                    let alpha = (i + 1) / this.trail.length * 0.4;
+                    let trailRadius = this.radius * (0.6 + 0.4 * ((i + 1) / this.trail.length));
+                    
+                    ctx.beginPath();
+                    ctx.arc(point.x, point.y, trailRadius, 0, Math.PI * 2);
+                    ctx.fillStyle = point.isDash ? COLORS.DASH_GLOW : COLORS.PLAYER;
+                    ctx.globalAlpha = alpha;
+                    ctx.fill();
+                }
+                ctx.globalAlpha = 1.0;
+
+                // 공 본체 글로우
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius * 1.3, 0, Math.PI * 2);
-                ctx.fillStyle = COLORS.PLAYER_GLOW;
+                ctx.arc(this.x, this.y, this.radius * 1.4, 0, Math.PI * 2);
+                ctx.fillStyle = this.isDashing ? COLORS.DASH_GLOW : COLORS.PLAYER_GLOW;
                 ctx.globalAlpha = 0.5;
                 ctx.fill();
                 ctx.globalAlpha = 1.0;
 
+                // 공 본체
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                ctx.fillStyle = COLORS.PLAYER;
+                ctx.fillStyle = this.isDashing ? '#f472b6' : COLORS.PLAYER;
                 ctx.fill();
             }
         }
 
         const BLOCK_TYPES = {
-            EMPTY: 0, NORMAL: 1, SPIKE_UP: 2, SPIKE_DOWN: 3, SPIKE_LEFT: 4, SPIKE_RIGHT: 5, PLAYER_START: 8, GOAL: 9
+            EMPTY: 0, 
+            NORMAL: 1, 
+            SPIKE_UP: 2, 
+            SPIKE_DOWN: 3, 
+            SPIKE_LEFT: 4, 
+            SPIKE_RIGHT: 5, 
+            MOVING_HORIZ: 6,
+            MOVING_VERT: 7,
+            PLAYER_START: 8, 
+            GOAL: 9
         };
 
         class Block {
             constructor(x, y, type) {
-                this.x = x * TILE_SIZE;
-                this.y = y * TILE_SIZE;
+                this.startX = x * TILE_SIZE;
+                this.startY = y * TILE_SIZE;
+                this.x = this.startX;
+                this.y = this.startY;
                 this.width = TILE_SIZE;
                 this.height = TILE_SIZE;
                 this.type = type;
+                
+                // 움직이는 발판 변수
+                this.moveRange = TILE_SIZE * 3;
+                this.moveSpeed = 1.5;
+                this.moveDir = 1;
             }
 
-            draw(ctx, time) {
+            update() {
+                if (this.type === BLOCK_TYPES.MOVING_HORIZ) {
+                    this.x += this.moveSpeed * this.moveDir;
+                    if (Math.abs(this.x - this.startX) >= this.moveRange) {
+                        this.moveDir *= -1;
+                    }
+                } else if (this.type === BLOCK_TYPES.MOVING_VERT) {
+                    this.y += this.moveSpeed * this.moveDir;
+                    if (Math.abs(this.y - this.startY) >= this.moveRange) {
+                        this.moveDir *= -1;
+                    }
+                }
+            }
+
+            draw(ctx) {
                 if (this.type === BLOCK_TYPES.NORMAL) {
                     ctx.fillStyle = '#64748b';
                     ctx.fillRect(this.x, this.y, this.width, this.height);
                     ctx.strokeStyle = COLORS.BLOCK_BORDER;
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(this.x, this.y, this.width, this.height);
+                } else if (this.type === BLOCK_TYPES.MOVING_HORIZ || this.type === BLOCK_TYPES.MOVING_VERT) {
+                    ctx.fillStyle = COLORS.MOVING_BLOCK;
+                    ctx.fillRect(this.x, this.y, this.width, this.height);
+                    ctx.strokeStyle = COLORS.MOVING_BORDER;
                     ctx.lineWidth = 2;
                     ctx.strokeRect(this.x, this.y, this.width, this.height);
                 } else if (this.type >= 2 && this.type <= 5) {
@@ -294,9 +413,11 @@ html_code = """
                     let r = this.width * 0.4;
                     
                     ctx.beginPath();
-                    ctx.arc(cx, cy, r * 1.2, 0, Math.PI * 2);
+                    ctx.arc(cx, cy, r * 1.3, 0, Math.PI * 2);
                     ctx.fillStyle = COLORS.GOAL_GLOW;
+                    ctx.globalAlpha = 0.5;
                     ctx.fill();
+                    ctx.globalAlpha = 1.0;
                     
                     ctx.beginPath();
                     ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -336,29 +457,21 @@ html_code = """
             ["00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00800000000000000090","00000000000000000000","11100111001110011111","00000000000000000000","00000000000000000000","00000000000000000000"],
             // Stage 2
             ["00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00800000000000000090","00000000000000000000","11110001111000111111","11112221111222111111","11111111111111111111","00000000000000000000"],
-            // Stage 3
-            ["00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000090","00000000000000001111","00000000000000000000","00000000000011110000","00000000000000000000","00000000111100000000","00000000000000000000","00001111000000000000","00800000000000000000","11110000000000000000","00000000000000000000","00000000000000000000"],
-            // Stage 4
-            ["11111111111111111111","11111111111111111111","33333333333333333333","00000000000000000000","00000000000000000000","00000000000000000000","00800000000000000090","00000012210002200000","11111211111211111111","11111111111111111111","11111111111111111111","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000"],
-            // Stage 5
-            ["00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000090","00800000000000000111","00000000000000000000","01100011000110001100","01100011000110001100","01100011000110001100","00000000000000000000"],
-            // Stage 6
-            ["00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000090","00000000011100001111","00001100001100000000","00000000001100000000","00800001101100000000","00000000001100000000","11111100001111111111","11111122221111111111","11111111111111111111","00000000000000000000","00000000000000000000","00000000000000000000"],
-            // Stage 7
-            ["00000000000000000000","11111111111111111111","11111111111111111111","33333333333333333333","00000330000330000000","00000000000000000000","00800000000000000090","00000000000000000000","11111111111111111111","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000"],
-            // Stage 8
-            ["00800000000000000000","11100000000000000000","00000000000000000000","00000400000000000000","00000110000000000000","00000000040000000000","00000000011000000000","00000000000004000000","00000000000001100000","00000000000000000000","00000000000000000090","00000000000000000111","22222222222222222111","11111111111111111111","00000000000000000000"],
-            // Stage 9
-            ["00000000000000000000","11111111111111110090","00000000000000000111","00000000000000000000","01111111111111111111","00000000000000000000","00000000000000000000","11111111111111111000","00000000000000000000","00000000000000000000","00011111111111111111","00800000000000000000","11110000000000000000","22222222222222222222","11111111111111111111"],
-            // Stage 10
-            ["00000000000000000000","00000000000000000090","00000000000000000111","00000000000002200000","00000000000011110000","00000000000000000000","00000000110000000000","00000000000000000000","00001100000000000000","00800000000000000000","11110000000000000000","22222222222222222222","11111111111111111111","00000000000000000000","00000000000000000000"]
+            // Stage 3: Dash Practice
+            ["00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000090","00800000000000000111","00000000000000000000","11110000000000001111","00000000000000000000","00000000000000000000","00000000000000000000"],
+            // Stage 4: Moving Platform Intro
+            ["00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000090","00800000000000000011","00000000000000000000","11110000600000001111","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000"],
+            // Stage 5: Vertical Moving Platform
+            ["00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000090","00000000000000001111","00000000000000000000","00000000000000000000","00000000000000000000","00000000007000000000","00800000000000000000","11110000000000000000","00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000000"],
+            // Stage 6: Dash + Moving Platforms
+            ["00000000000000000000","00000000000000000000","00000000000000000000","00000000000000000090","00000000000000001111","00000000000000000000","00000000006000000000","00000000000000000000","00000000000000000000","00800060000000000000","11110000000000000000","11112222222222221111","11111111111111111111","00000000000000000000","00000000000000000000"]
         ];
 
         let player;
         let blocks = [];
 
         function resize() {
-            scale = Math.min(window.innerWidth / GAME_WIDTH, window.innerHeight / GAME_HEIGHT) * 0.95;
+            scale = Math.min(window.innerWidth / GAME_WIDTH, window.innerHeight / GAME_HEIGHT) * 0.92;
             canvas.width = GAME_WIDTH * scale;
             canvas.height = GAME_HEIGHT * scale;
             ctx.scale(scale, scale);
@@ -383,13 +496,26 @@ html_code = """
             uiDeaths.innerText = `Deaths: ${deaths}`;
         }
 
-        function gameLoop(timestamp) {
+        function gameLoop() {
             if (gameState !== 'playing') return;
             
+            // 업데이트
+            for (let block of blocks) block.update();
             player.update();
+
+            // UI 대쉬 쿨다운 업데이트
+            if (player.dashCooldown <= 0) {
+                uiDash.innerText = "Dash: READY (Shift)";
+                uiDash.style.color = "#ec4899";
+            } else {
+                uiDash.innerText = `Dash: ${Math.ceil(player.dashCooldown / 60)}s`;
+                uiDash.style.color = "#94a3b8";
+            }
+
             let prevY = player.y - player.vy;
             let prevX = player.x - player.vx;
 
+            // 충돌 로직
             for (let block of blocks) {
                 if (rectCircleColliding(player, block)) {
                     if (block.type === BLOCK_TYPES.GOAL) {
@@ -400,11 +526,15 @@ html_code = """
                         die();
                         return;
                     }
-                    if (block.type === BLOCK_TYPES.NORMAL) {
-                        if (prevY + player.radius <= block.y + 5) {
+                    if (block.type === BLOCK_TYPES.NORMAL || block.type === BLOCK_TYPES.MOVING_HORIZ || block.type === BLOCK_TYPES.MOVING_VERT) {
+                        if (prevY + player.radius <= block.y + 8) {
                             player.y = block.y - player.radius;
                             player.vy = player.bounceForce;
-                        } else if (prevY - player.radius >= block.y + block.height - 5) {
+                            // 움직이는 발판 관성 부여
+                            if (block.type === BLOCK_TYPES.MOVING_HORIZ) {
+                                player.x += block.moveSpeed * block.moveDir;
+                            }
+                        } else if (prevY - player.radius >= block.y + block.height - 8) {
                             player.y = block.y + block.height + player.radius;
                             player.vy = 0;
                         } else {
@@ -415,6 +545,7 @@ html_code = """
                 }
             }
 
+            // 렌더링
             ctx.fillStyle = COLORS.BG;
             ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
             
@@ -429,7 +560,7 @@ html_code = """
             }
             ctx.stroke();
 
-            for (let block of blocks) block.draw(ctx, timestamp);
+            for (let block of blocks) block.draw(ctx);
             player.draw(ctx);
 
             animationId = requestAnimationFrame(gameLoop);
@@ -505,6 +636,21 @@ html_code = """
             if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
         });
 
+        // 모바일 터치 및 대쉬 버튼 등록
+        const setupMobileControl = (id, dir) => {
+            const btn = document.getElementById(id);
+            const start = (e) => { e.preventDefault(); if (dir === 'left') touchLeft = true; if (dir === 'right') touchRight = true; if (dir === 'dash' && player) player.triggerDash(); };
+            const end = (e) => { e.preventDefault(); if (dir === 'left') touchLeft = false; if (dir === 'right') touchRight = false; };
+            btn.addEventListener('touchstart', start);
+            btn.addEventListener('touchend', end);
+            btn.addEventListener('mousedown', start);
+            btn.addEventListener('mouseup', end);
+        };
+
+        setupMobileControl('btn-left', 'left');
+        setupMobileControl('btn-right', 'right');
+        setupMobileControl('btn-dash', 'dash');
+
         document.getElementById('start-btn').addEventListener('click', startGame);
         document.getElementById('retry-btn').addEventListener('click', retryStage);
         document.getElementById('next-btn').addEventListener('click', nextStage);
@@ -515,6 +661,7 @@ html_code = """
         });
 
         resize();
+        window.addEventListener('resize', resize);
     </script>
 </body>
 </html>
